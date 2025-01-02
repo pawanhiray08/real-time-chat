@@ -86,7 +86,7 @@ const io = require('socket.io')(server, {
     path: '/socket.io',
     cors: {
         origin: process.env.NODE_ENV === 'production' 
-            ? ['https://real-time-chat-pawanhiray08.vercel.app'] 
+            ? ['https://truerealchat.vercel.app'] 
             : ['http://localhost:8080'],
         methods: ['GET', 'POST'],
         credentials: true
