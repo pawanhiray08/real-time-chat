@@ -2,6 +2,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 
 module.exports = (passport) => {
+    console.log('Initializing Passport...');
     console.log('Initializing Google Strategy with client ID:', process.env.GOOGLE_CLIENT_ID);
 
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
