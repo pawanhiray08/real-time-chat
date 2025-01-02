@@ -127,26 +127,19 @@ app.get('/chat', ensureAuth, (req, res) => {
 });
 
 // Auth Routes
-app.get('/auth/google',
-    (req, res, next) => {
-        console.log('Starting Google OAuth...');
-        next();
-    },
-    passport.authenticate('google', { 
-        scope: ['profile', 'email']
-    })
-);
+app.get('/auth/google', (req, res, next) => {
+    console.log('Starting Google OAuth...');
+    passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+});
 
-app.get('/auth/google/callback',
-    (req, res, next) => {
-        console.log('Google OAuth callback received');
-        passport.authenticate('google', {
-            successRedirect: '/',
-            failureRedirect: '/login',
-            failureMessage: true
-        })(req, res, next);
-    }
-);
+app.get('/auth/google/callback', (req, res, next) => {
+    console.log('Google callback received');
+    passport.authenticate('google', {
+        successRedirect: '/',
+        failureRedirect: '/login',
+        failureMessage: true
+    })(req, res, next);
+});
 
 app.get('/api/user', ensureAuth, (req, res) => {
     try {
