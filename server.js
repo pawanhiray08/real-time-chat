@@ -5,7 +5,7 @@ const passport = require('passport');
 const mongoose = require('mongoose');
 const User = require('./models/User');
 const Message = require('./models/Message');
-const MongoStore = require('connect-mongo')(session);
+const MongoStore = require('connect-mongo');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 
@@ -30,7 +30,8 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     store: new MongoStore({
-        url: process.env.MONGODB_URI,
+        mongoUrl: process.env.MONGODB_URI,
+        collectionName: 'sessions',
         ttl: 14 * 24 * 60 * 60 // = 14 days. Default
     }),
     cookie: {
