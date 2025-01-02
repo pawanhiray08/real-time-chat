@@ -137,8 +137,7 @@ app.get('/auth/google',
         next();
     },
     passport.authenticate('google', { 
-        scope: ['profile', 'email'],
-        prompt: 'select_account'
+        scope: ['profile', 'email']
     })
 );
 
@@ -146,13 +145,10 @@ app.get('/auth/google/callback',
     (req, res, next) => {
         console.log('Google OAuth callback received');
         passport.authenticate('google', {
+            successRedirect: '/',
             failureRedirect: '/login',
             failureMessage: true
         })(req, res, next);
-    },
-    (req, res) => {
-        console.log('Google OAuth successful, redirecting...');
-        res.redirect('/');
     }
 );
 
