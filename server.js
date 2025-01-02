@@ -11,10 +11,25 @@ const path = require('path');
 
 const app = express();
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error('Error:', err);
-    res.status(500).json({ error: 'Internal Server Error', details: err.message });
+// Connect to MongoDB first
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+})
+.then(() => {
+    console.log('MongoDB Connected successfully');
+})
+.catch(err => {
+    console.error('MongoDB Connection Error:', err);
+    process.exit(1); // Exit if MongoDB connection fails
+});
+
+// Session store
+const store = MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI,
+    collectionName: 'sessions',
+    ttl: 24 * 60 * 60, // 1 day
+    autoRemove: 'native'
 });
 
 // Session configuration
@@ -22,22 +37,24 @@ const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: MongoStore.create({
-        mongoUrl: process.env.MONGODB_URI,
-        collectionName: 'sessions'
-    }),
+    store: store,
     cookie: {
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : 'localhost',
         maxAge: 1000 * 60 * 60 * 24 // 24 hours
     }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(500).json({ error: 'Internal Server Error', details: err.message });
 });
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
+app.use(cookieParser(process.env.SESSION_SECRET));
 app.use(sessionMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -60,29 +77,21 @@ if (process.env.NODE_ENV === 'production') {
     });
 }
 
-// Passport config
+// Initialize Passport after session middleware
 require('./config/passport')(passport);
 app.use(passport.initialize());
 app.use(passport.session());
-
-// MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
-.then(() => {
-    console.log('MongoDB Connected successfully');
-})
-.catch(err => {
-    console.error('MongoDB Connection Error:', err);
-});
 
 // Auth middleware
 const ensureAuth = (req, res, next) => {
     if (req.isAuthenticated()) {
         return next();
     }
-    res.redirect('/login');
+    if (req.xhr || req.headers.accept.indexOf('json') > -1) {
+        res.status(401).json({ error: 'Not authenticated' });
+    } else {
+        res.redirect('/login');
+    }
 };
 
 // Routes
@@ -136,7 +145,10 @@ app.get('/auth/google',
 app.get('/auth/google/callback',
     (req, res, next) => {
         console.log('Google OAuth callback received');
-        passport.authenticate('google', { failureRedirect: '/login' })(req, res, next);
+        passport.authenticate('google', {
+            failureRedirect: '/login',
+            failureMessage: true
+        })(req, res, next);
     },
     (req, res) => {
         console.log('Google OAuth successful, redirecting...');
@@ -144,17 +156,13 @@ app.get('/auth/google/callback',
     }
 );
 
-app.get('/api/user', (req, res) => {
+app.get('/api/user', ensureAuth, (req, res) => {
     try {
-        if (req.user) {
-            res.json({
-                id: req.user._id,
-                displayName: req.user.displayName,
-                avatar: req.user.avatar
-            });
-        } else {
-            res.status(401).json({ error: 'Not authenticated' });
-        }
+        res.json({
+            id: req.user._id,
+            displayName: req.user.displayName,
+            avatar: req.user.avatar
+        });
     } catch (err) {
         console.error('Error in user API:', err);
         res.status(500).json({ error: 'Internal Server Error', details: err.message });
@@ -163,8 +171,17 @@ app.get('/api/user', (req, res) => {
 
 app.get('/logout', (req, res) => {
     try {
-        req.logout(() => {
-            res.redirect('/login');
+        req.logout((err) => {
+            if (err) {
+                console.error('Logout error:', err);
+                return res.status(500).json({ error: 'Error during logout' });
+            }
+            req.session.destroy((err) => {
+                if (err) {
+                    console.error('Session destruction error:', err);
+                }
+                res.redirect('/login');
+            });
         });
     } catch (err) {
         console.error('Error in logout:', err);
