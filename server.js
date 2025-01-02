@@ -17,8 +17,14 @@ const Message = require('./models/Message');
 // Middleware
 const { ensureAuth, ensureGuest } = require('./middleware/auth');
 
-// Passport config
-require('./config/passport')(passport);
+// Update Google OAuth callback URL based on environment
+const isProduction = process.env.NODE_ENV === 'production';
+const callbackURL = isProduction 
+    ? 'https://your-render-app-name.onrender.com/auth/google/callback'
+    : 'http://localhost:3000/auth/google/callback';
+
+// Passport config with dynamic callback URL
+require('./config/passport')(passport, callbackURL);
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI, {
