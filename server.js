@@ -5,7 +5,7 @@ const passport = require('passport');
 const mongoose = require('mongoose');
 const User = require('./models/User');
 const Message = require('./models/Message');
-const MongoStore = require('connect-mongo');
+const MongoStore = require('connect-mongo')(session);
 const cookieParser = require('cookie-parser');
 const path = require('path');
 
@@ -24,25 +24,30 @@ mongoose.connect(process.env.MONGODB_URI, {
     process.exit(1); // Exit if MongoDB connection fails
 });
 
-// Session store
-const store = MongoStore.create({
-    mongoUrl: process.env.MONGODB_URI,
-    collectionName: 'sessions',
-    ttl: 24 * 60 * 60, // 1 day
-    autoRemove: 'native'
-});
-
 // Session configuration
-const sessionMiddleware = session({
+app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: store,
+    store: new MongoStore({
+        url: process.env.MONGODB_URI,
+        ttl: 14 * 24 * 60 * 60 // = 14 days. Default
+    }),
     cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        maxAge: 1000 * 60 * 60 * 24 // 24 hours
+        secure: process.env.NODE_ENV === 'production', // Set to true if using HTTPS
+        maxAge: 180 * 60 * 1000 // 3 hours
     }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Logging for session and user
+app.use((req, res, next) => {
+    console.log('Session:', req.session);
+    console.log('User:', req.user);
+    next();
 });
 
 // Error handling middleware
@@ -55,7 +60,6 @@ app.use((err, req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser(process.env.SESSION_SECRET));
-app.use(sessionMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // CORS configuration for production
@@ -71,11 +75,6 @@ if (process.env.NODE_ENV === 'production') {
         next();
     });
 }
-
-// Initialize Passport after session middleware
-require('./config/passport')(passport);
-app.use(passport.initialize());
-app.use(passport.session());
 
 // Auth middleware
 const ensureAuth = (req, res, next) => {
