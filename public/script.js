@@ -10,9 +10,10 @@ const messageTemplate = document.getElementById('message-template');
 const userAvatar = document.getElementById('user-avatar');
 const userName = document.getElementById('user-name');
 
-// Typing timer
+// Typing timer and state
 let typingTimeout;
 let currentUser = null;
+let isTyping = false;
 
 // Initialize connection and get user data
 fetch('/api/user')
@@ -37,21 +38,26 @@ socket.on('newMessage', (message) => {
     scrollToBottom();
 });
 
-// Handle input changes
+// Handle input changes for typing indicator
 messageInput.addEventListener('input', (e) => {
-    // Send the current input value to other users
-    socket.emit('typing', e.target.value);
+    const text = e.target.value.trim();
     
-    // Handle typing indicator
-    socket.emit('typingStatus', true);
+    // Emit typing event with current text
+    socket.emit('typing', { text: text });
     
     // Clear previous timeout
     clearTimeout(typingTimeout);
     
     // Set new timeout
     typingTimeout = setTimeout(() => {
-        socket.emit('typingStatus', false);
+        socket.emit('stopTyping');
     }, 1000);
+});
+
+// Handle when user stops typing
+messageInput.addEventListener('blur', () => {
+    clearTimeout(typingTimeout);
+    socket.emit('stopTyping');
 });
 
 // Handle send button click
@@ -72,75 +78,60 @@ function sendMessage() {
         socket.emit('sendMessage', message);
         messageInput.value = '';
         // Clear typing status
-        socket.emit('typingStatus', false);
+        socket.emit('stopTyping');
     }
 }
 
 // Listen for typing from other users
 socket.on('userTyping', (data) => {
-    const typingMessage = document.getElementById(`typing-${data.userId}`);
-    if (data.text && !typingMessage) {
-        const messageDiv = messageTemplate.content.cloneNode(true);
-        const message = messageDiv.querySelector('.message');
-        message.id = `typing-${data.userId}`;
-        message.classList.add('typing');
-        
-        const avatar = message.querySelector('.message-avatar');
-        avatar.style.backgroundImage = `url(${data.user.avatar})`;
-        
-        const author = message.querySelector('.message-author');
-        author.textContent = data.user.displayName;
-        
-        const messageText = message.querySelector('.message-text');
-        messageText.textContent = data.text;
-        
-        chatMessages.appendChild(message);
-        scrollToBottom();
-    } else if (typingMessage) {
-        typingMessage.querySelector('.message-text').textContent = data.text;
-        if (!data.text) {
-            typingMessage.remove();
+    const typingElement = document.getElementById(`typing-${data.userId}`);
+    
+    if (data.isTyping) {
+        if (!typingElement) {
+            // Create typing indicator
+            const typingDiv = document.createElement('div');
+            typingDiv.id = `typing-${data.userId}`;
+            typingDiv.className = 'typing-indicator-item';
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'typing-avatar';
+            avatar.style.backgroundImage = `url(${data.avatar})`;
+            
+            const text = document.createElement('span');
+            text.className = 'typing-text';
+            
+            const name = document.createElement('span');
+            name.className = 'typing-name';
+            name.textContent = data.displayName;
+            
+            const preview = document.createElement('span');
+            preview.className = 'typing-preview';
+            preview.textContent = data.text || 'is typing...';
+            
+            text.appendChild(name);
+            text.appendChild(document.createTextNode(': '));
+            text.appendChild(preview);
+            
+            typingDiv.appendChild(avatar);
+            typingDiv.appendChild(text);
+            
+            typingIndicator.appendChild(typingDiv);
+        } else {
+            // Update existing typing indicator
+            const preview = typingElement.querySelector('.typing-preview');
+            preview.textContent = data.text || 'is typing...';
         }
-    }
-});
-
-// Listen for typing status
-socket.on('userTypingStatus', (data) => {
-    const userId = data.userId;
-    const isTyping = data.isTyping;
-    
-    let statusElement = document.getElementById(`status-${userId}`);
-    
-    if (isTyping && !statusElement) {
-        statusElement = document.createElement('div');
-        statusElement.id = `status-${userId}`;
-        statusElement.className = 'typing-status';
-        
-        const avatar = document.createElement('div');
-        avatar.className = 'typing-avatar';
-        avatar.style.backgroundImage = `url(${data.user.avatar})`;
-        
-        statusElement.appendChild(avatar);
-        statusElement.appendChild(document.createTextNode(`${data.user.displayName} is typing...`));
-        
-        typingIndicator.appendChild(statusElement);
-    } else if (!isTyping && statusElement) {
-        statusElement.remove();
+    } else if (!data.isTyping && typingElement) {
+        typingElement.remove();
     }
 });
 
 // Append message to chat
 function appendMessage(message) {
-    // Remove typing message if exists
-    const typingMessage = document.getElementById(`typing-${message.sender._id}`);
-    if (typingMessage) {
-        typingMessage.remove();
-    }
-    
     const messageDiv = messageTemplate.content.cloneNode(true);
     const messageElement = messageDiv.querySelector('.message');
     
-    if (message.sender._id === currentUser?._id) {
+    if (message.sender._id === currentUser?.id) {
         messageElement.classList.add('self');
     }
     
