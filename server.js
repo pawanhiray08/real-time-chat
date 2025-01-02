@@ -29,14 +29,15 @@ app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: new MongoStore({
+    store: MongoStore.create({
         mongoUrl: process.env.MONGODB_URI,
         collectionName: 'sessions',
-        ttl: 14 * 24 * 60 * 60 // = 14 days. Default
+        ttl: 24 * 60 * 60 // 1 day
     }),
     cookie: {
-        secure: process.env.NODE_ENV === 'production', // Set to true if using HTTPS
-        maxAge: 180 * 60 * 1000 // 3 hours
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
 
