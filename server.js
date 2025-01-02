@@ -11,6 +11,12 @@ const path = require('path');
 
 const app = express();
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(500).json({ error: 'Internal Server Error', details: err.message });
+});
+
 // Session configuration
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET,
@@ -55,7 +61,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Passport config
-require('./config/passport');
+require('./config/passport')(passport);
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -81,53 +87,89 @@ const ensureAuth = (req, res, next) => {
 
 // Routes
 app.get('/', (req, res) => {
-    if (req.isAuthenticated()) {
-        res.sendFile(path.join(__dirname, 'public', 'chat.html'));
-    } else {
-        res.redirect('/login');
+    try {
+        if (req.isAuthenticated()) {
+            res.sendFile(path.join(__dirname, 'public', 'chat.html'));
+        } else {
+            res.redirect('/login');
+        }
+    } catch (err) {
+        console.error('Error in root route:', err);
+        res.status(500).json({ error: 'Internal Server Error', details: err.message });
     }
 });
 
 app.get('/login', (req, res) => {
-    if (req.isAuthenticated()) {
-        res.redirect('/');
-    } else {
-        res.sendFile(path.join(__dirname, 'public', 'login.html'));
+    try {
+        if (req.isAuthenticated()) {
+            res.redirect('/');
+        } else {
+            res.sendFile(path.join(__dirname, 'public', 'login.html'));
+        }
+    } catch (err) {
+        console.error('Error in login route:', err);
+        res.status(500).json({ error: 'Internal Server Error', details: err.message });
     }
 });
 
 app.get('/chat', ensureAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'chat.html'));
+    try {
+        res.sendFile(path.join(__dirname, 'public', 'chat.html'));
+    } catch (err) {
+        console.error('Error in chat route:', err);
+        res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    }
 });
 
 // Auth Routes
 app.get('/auth/google',
-    passport.authenticate('google', { scope: ['profile', 'email'] })
+    (req, res, next) => {
+        console.log('Starting Google OAuth...');
+        next();
+    },
+    passport.authenticate('google', { 
+        scope: ['profile', 'email'],
+        prompt: 'select_account'
+    })
 );
 
 app.get('/auth/google/callback',
-    passport.authenticate('google', { failureRedirect: '/login' }),
+    (req, res, next) => {
+        console.log('Google OAuth callback received');
+        passport.authenticate('google', { failureRedirect: '/login' })(req, res, next);
+    },
     (req, res) => {
+        console.log('Google OAuth successful, redirecting...');
         res.redirect('/');
     }
 );
 
 app.get('/api/user', (req, res) => {
-    if (req.user) {
-        res.json({
-            id: req.user._id,
-            displayName: req.user.displayName,
-            avatar: req.user.avatar
-        });
-    } else {
-        res.status(401).json({ error: 'Not authenticated' });
+    try {
+        if (req.user) {
+            res.json({
+                id: req.user._id,
+                displayName: req.user.displayName,
+                avatar: req.user.avatar
+            });
+        } else {
+            res.status(401).json({ error: 'Not authenticated' });
+        }
+    } catch (err) {
+        console.error('Error in user API:', err);
+        res.status(500).json({ error: 'Internal Server Error', details: err.message });
     }
 });
 
 app.get('/logout', (req, res) => {
-    req.logout(() => {
-        res.redirect('/login');
-    });
+    try {
+        req.logout(() => {
+            res.redirect('/login');
+        });
+    } catch (err) {
+        console.error('Error in logout:', err);
+        res.status(500).json({ error: 'Internal Server Error', details: err.message });
+    }
 });
 
 // Socket.IO setup
@@ -152,12 +194,17 @@ io.use((socket, next) => {
 });
 
 io.use((socket, next) => {
-    const session = socket.request.session;
-    if (session && session.passport && session.passport.user) {
-        socket.user = session.passport.user;
-        next();
-    } else {
-        next(new Error('Unauthorized'));
+    try {
+        const session = socket.request.session;
+        if (session && session.passport && session.passport.user) {
+            socket.user = session.passport.user;
+            next();
+        } else {
+            next(new Error('Unauthorized'));
+        }
+    } catch (err) {
+        console.error('Socket.IO auth error:', err);
+        next(err);
     }
 });
 
@@ -177,6 +224,7 @@ io.on('connection', async (socket) => {
         socket.emit('previousMessages', messages.reverse());
     } catch (err) {
         console.error('Error loading messages:', err);
+        socket.emit('error', { message: 'Error loading messages' });
     }
 
     // Handle new messages
@@ -194,6 +242,7 @@ io.on('connection', async (socket) => {
             io.emit('newMessage', populatedMessage);
         } catch (err) {
             console.error('Error saving message:', err);
+            socket.emit('error', { message: 'Error saving message' });
         }
     });
 

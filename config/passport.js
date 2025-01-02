@@ -12,33 +12,56 @@ module.exports = (passport) => {
     },
     async (accessToken, refreshToken, profile, done) => {
         try {
+            console.log('Google OAuth Profile:', {
+                id: profile.id,
+                displayName: profile.displayName,
+                email: profile.emails?.[0]?.value,
+                photo: profile.photos?.[0]?.value
+            });
+
             let user = await User.findOne({ googleId: profile.id });
 
             if (!user) {
+                console.log('Creating new user...');
                 user = await User.create({
                     googleId: profile.id,
                     displayName: profile.displayName,
-                    email: profile.emails[0].value,
-                    avatar: profile.photos[0].value
+                    email: profile.emails?.[0]?.value,
+                    avatar: profile.photos?.[0]?.value
                 });
+                console.log('New user created:', user);
+            } else {
+                console.log('Existing user found:', user);
             }
 
             return done(null, user);
         } catch (err) {
-            console.error('Passport Error:', err);
+            console.error('Passport Strategy Error:', err);
             return done(err, null);
         }
     }));
 
     passport.serializeUser((user, done) => {
-        done(null, user.id);
+        try {
+            console.log('Serializing user:', user.id);
+            done(null, user.id);
+        } catch (err) {
+            console.error('Serialize Error:', err);
+            done(err, null);
+        }
     });
 
     passport.deserializeUser(async (id, done) => {
         try {
+            console.log('Deserializing user:', id);
             const user = await User.findById(id);
+            if (!user) {
+                console.error('User not found:', id);
+                return done(null, false);
+            }
             done(null, user);
         } catch (err) {
+            console.error('Deserialize Error:', err);
             done(err, null);
         }
     });
