@@ -134,6 +134,8 @@ app.get('/auth/google', (req, res, next) => {
 
 app.get('/auth/google/callback', (req, res, next) => {
     console.log('Google callback received');
+    console.log('Session data:', req.session);
+    console.log('User data before authentication:', req.user);
     passport.authenticate('google', {
         successRedirect: '/',
         failureRedirect: '/login',
