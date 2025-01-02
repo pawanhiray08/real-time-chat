@@ -7,6 +7,7 @@ const User = require('./models/User');
 const Message = require('./models/Message');
 const MongoStore = require('connect-mongo');
 const cookieParser = require('cookie-parser');
+const path = require('path');
 
 const app = express();
 
@@ -31,7 +32,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(sessionMiddleware);
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Passport config
 require('./config/passport');
@@ -48,6 +49,35 @@ mongoose.connect(process.env.MONGODB_URI, {
 })
 .catch(err => {
     console.error('MongoDB Connection Error:', err);
+});
+
+// Auth middleware
+const ensureAuth = (req, res, next) => {
+    if (req.isAuthenticated()) {
+        return next();
+    }
+    res.redirect('/login');
+};
+
+// Routes
+app.get('/', (req, res) => {
+    if (req.isAuthenticated()) {
+        res.sendFile(path.join(__dirname, 'public', 'chat.html'));
+    } else {
+        res.redirect('/login');
+    }
+});
+
+app.get('/login', (req, res) => {
+    if (req.isAuthenticated()) {
+        res.redirect('/');
+    } else {
+        res.sendFile(path.join(__dirname, 'public', 'login.html'));
+    }
+});
+
+app.get('/chat', ensureAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'chat.html'));
 });
 
 // Auth Routes
@@ -76,7 +106,7 @@ app.get('/api/user', (req, res) => {
 
 app.get('/logout', (req, res) => {
     req.logout(() => {
-        res.redirect('/');
+        res.redirect('/login');
     });
 });
 
