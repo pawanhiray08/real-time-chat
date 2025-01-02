@@ -5,7 +5,7 @@ module.exports = (passport) => {
     passport.use(new GoogleStrategy({
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: 'https://real-time-chat-git-main-pawanhiray08s-projects.vercel.app/auth/google/callback',
+        callbackURL: 'https://truerealchat.vercel.app/auth/google/callback',
         proxy: true
     },
     async (accessToken, refreshToken, profile, done) => {
