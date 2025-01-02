@@ -6,8 +6,9 @@ module.exports = (passport) => {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         callbackURL: process.env.NODE_ENV === 'production'
-            ? 'https://truerealchat.vercel.app/auth/google/callback'
-            : 'http://localhost:8080/auth/google/callback'
+            ? `${process.env.VERCEL_URL || 'https://truerealchat.vercel.app'}/auth/google/callback`
+            : 'http://localhost:8080/auth/google/callback',
+        proxy: true
     },
     async (accessToken, refreshToken, profile, done) => {
         try {

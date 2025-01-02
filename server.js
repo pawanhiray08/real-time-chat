@@ -37,11 +37,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // CORS configuration for production
 if (process.env.NODE_ENV === 'production') {
+    const allowedOrigins = [
+        'https://truerealchat.vercel.app',
+        'https://real-time-chat-git-main-pawanhiray08s-projects.vercel.app'
+    ];
+    
     app.use((req, res, next) => {
-        res.header('Access-Control-Allow-Origin', 'https://truerealchat.vercel.app');
-        res.header('Access-Control-Allow-Credentials', true);
-        res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE');
-        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        const origin = req.headers.origin;
+        if (allowedOrigins.includes(origin)) {
+            res.header('Access-Control-Allow-Origin', origin);
+            res.header('Access-Control-Allow-Credentials', true);
+            res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE');
+            res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        }
         next();
     });
 }
@@ -128,7 +136,10 @@ const io = require('socket.io')(server, {
     path: '/socket.io',
     cors: {
         origin: process.env.NODE_ENV === 'production' 
-            ? ['https://truerealchat.vercel.app'] 
+            ? [
+                'https://truerealchat.vercel.app',
+                'https://real-time-chat-git-main-pawanhiray08s-projects.vercel.app'
+              ]
             : ['http://localhost:8080'],
         methods: ['GET', 'POST'],
         credentials: true
