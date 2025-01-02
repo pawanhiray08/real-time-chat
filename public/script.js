@@ -1,7 +1,8 @@
 // Connect to Socket.io server
 const socket = io({
+    path: '/socket.io',
     withCredentials: true,
-    path: '/socket.io'
+    transports: ['websocket', 'polling']
 });
 
 // DOM elements

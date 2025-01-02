@@ -1,65 +1,92 @@
 require('dotenv').config();
 const express = require('express');
-const app = express();
-const path = require('path');
-const mongoose = require('mongoose');
-const passport = require('passport');
 const session = require('express-session');
+const passport = require('passport');
+const mongoose = require('mongoose');
+const User = require('./models/User');
+const Message = require('./models/Message');
 const MongoStore = require('connect-mongo');
 const cookieParser = require('cookie-parser');
-const http = require('http');
-const io = require('socket.io')();
+
+const app = express();
+
+// Session configuration
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: MongoStore.create({ mongoUrl: process.env.MONGODB_URI })
+    store: MongoStore.create({
+        mongoUrl: process.env.MONGODB_URI,
+        collectionName: 'sessions'
+    }),
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 1000 * 60 * 60 * 24 // 24 hours
+    }
 });
 
-// Models
-const User = require('./models/User');
-const Message = require('./models/Message');
-
 // Middleware
-const { ensureAuth, ensureGuest } = require('./middleware/auth');
-
-// Update Google OAuth callback URL based on environment
-const isProduction = process.env.NODE_ENV === 'production';
-const port = process.env.PORT || 8080;
-const callbackURL = isProduction 
-    ? 'https://your-render-app-name.onrender.com/auth/google/callback'
-    : `http://localhost:${port}/auth/google/callback`;
-
-// Passport config with dynamic callback URL
-require('./config/passport')(passport, callbackURL);
-
-// Middleware
-app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-
-// Sessions
 app.use(sessionMiddleware);
+app.use(express.static('public'));
 
-// Passport middleware
+// Passport config
+require('./config/passport');
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Port configuration
-const PORT = process.env.PORT || 8080;
-
-// Start server
-const server = app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV}`);
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+})
+.then(() => {
+    console.log('MongoDB Connected successfully');
+})
+.catch(err => {
+    console.error('MongoDB Connection Error:', err);
 });
 
-// Socket.IO configuration
-io.listen(server, {
+// Auth Routes
+app.get('/auth/google',
+    passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+app.get('/auth/google/callback',
+    passport.authenticate('google', { failureRedirect: '/login' }),
+    (req, res) => {
+        res.redirect('/');
+    }
+);
+
+app.get('/api/user', (req, res) => {
+    if (req.user) {
+        res.json({
+            id: req.user._id,
+            displayName: req.user.displayName,
+            avatar: req.user.avatar
+        });
+    } else {
+        res.status(401).json({ error: 'Not authenticated' });
+    }
+});
+
+app.get('/logout', (req, res) => {
+    req.logout(() => {
+        res.redirect('/');
+    });
+});
+
+// Socket.IO setup
+const server = require('http').createServer(app);
+const io = require('socket.io')(server, {
+    path: '/socket.io',
     cors: {
         origin: process.env.NODE_ENV === 'production' 
-            ? ['https://real-time-chat-pawanhiray08.koyeb.app'] 
+            ? ['https://real-time-chat-pawanhiray08.vercel.app'] 
             : ['http://localhost:8080'],
         methods: ['GET', 'POST'],
         credentials: true
@@ -71,82 +98,46 @@ io.use((socket, next) => {
     sessionMiddleware(socket.request, {}, next);
 });
 
-// Routes
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-app.get('/health', (req, res) => {
-    res.send('Server is running');
-});
-
-app.get('/chat', ensureAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'chat.html'));
-});
-
-// API Routes
-app.get('/api/user', ensureAuth, (req, res) => {
-    res.json({
-        id: req.user._id,
-        displayName: req.user.displayName,
-        email: req.user.email,
-        avatar: req.user.avatar
-    });
-});
-
-// Auth routes
-app.get('/auth/google',
-    passport.authenticate('google', { scope: ['profile', 'email'] })
-);
-
-app.get('/auth/google/callback',
-    passport.authenticate('google', { failureRedirect: '/' }),
-    (req, res) => {
-        res.redirect('/chat');
+io.use((socket, next) => {
+    const session = socket.request.session;
+    if (session && session.passport && session.passport.user) {
+        socket.user = session.passport.user;
+        next();
+    } else {
+        next(new Error('Unauthorized'));
     }
-);
-
-app.get('/auth/logout', (req, res) => {
-    req.logout(() => {
-        res.redirect('/');
-    });
 });
 
-// Socket.IO connection handling
+// Socket.IO event handlers
 io.on('connection', async (socket) => {
-    console.log('User connected:', socket.id);
-    
-    // Get user from session
-    const user = socket.request.session?.passport?.user;
-    if (!user) {
-        console.log('No authenticated user for socket:', socket.id);
-        return;
-    }
+    console.log('User connected:', socket.user);
+    const user = socket.user;
 
-    // Load previous messages
     try {
+        // Load previous messages
         const messages = await Message.find()
-            .sort('-timestamp')
+            .sort({ timestamp: -1 })
             .limit(50)
-            .populate('sender', 'displayName avatar');
+            .populate('sender')
+            .exec();
+
         socket.emit('previousMessages', messages.reverse());
     } catch (err) {
         console.error('Error loading messages:', err);
     }
 
-    // Handle new message
-    socket.on('sendMessage', async (messageText) => {
+    // Handle new messages
+    socket.on('sendMessage', async (text) => {
         try {
-            const userDoc = await User.findById(user);
-            const message = await Message.create({
+            const message = new Message({
+                text,
                 sender: user,
-                text: messageText,
                 timestamp: new Date()
             });
-            
-            const populatedMessage = await Message.findById(message._id)
-                .populate('sender', 'displayName avatar');
-            
+
+            await message.save();
+            const populatedMessage = await message.populate('sender');
+
             io.emit('newMessage', populatedMessage);
         } catch (err) {
             console.error('Error saving message:', err);
@@ -178,45 +169,19 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
+        console.log('User disconnected:', socket.user);
     });
 });
 
-// Connect to MongoDB and start server
-console.log('Attempting to connect to MongoDB...');
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-    heartbeatFrequencyMS: 2000,
-    retryWrites: true,
-    w: 'majority',
-    dbName: 'chatapp'
-})
-.then(() => {
-    console.log('MongoDB Connected successfully');
-})
-.catch(err => {
-    console.error('MongoDB Connection Error - Details:', err);
-    if (err.name === 'MongoServerSelectionError') {
-        console.log('\nTroubleshooting steps:');
-        console.log('1. Check if your IP is whitelisted in MongoDB Atlas');
-        console.log('2. Verify username and password are correct');
-        console.log('3. Ensure MongoDB Atlas cluster is running');
-        console.log('4. Check if there are any network restrictions');
-    }
-    process.exit(1);
-});
+// Port configuration
+const PORT = process.env.PORT || 8080;
 
-// Handle MongoDB connection events
-mongoose.connection.on('error', err => {
-    console.error('MongoDB connection error:', err);
-});
+if (require.main === module) {
+    server.listen(PORT, () => {
+        console.log(`Server is running on http://localhost:${PORT}`);
+        console.log(`Environment: ${process.env.NODE_ENV}`);
+    });
+}
 
-mongoose.connection.on('disconnected', () => {
-    console.log('MongoDB disconnected');
-});
-
-mongoose.connection.on('connected', () => {
-    console.log('MongoDB connected');
-});
+// Export for Vercel
+module.exports = server;
