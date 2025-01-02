@@ -1,5 +1,8 @@
 // Connect to Socket.io server
-const socket = io();
+const socket = io({
+    withCredentials: true,
+    path: '/socket.io'
+});
 
 // DOM elements
 const messageInput = document.getElementById('message-input');

@@ -8,8 +8,7 @@ const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const cookieParser = require('cookie-parser');
 const http = require('http');
-const server = http.createServer(app);
-const io = require('socket.io')(server);
+const io = require('socket.io')();
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET,
     resave: false,
@@ -46,6 +45,26 @@ app.use(sessionMiddleware);
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Port configuration
+const PORT = process.env.PORT || 8080;
+
+// Start server
+const server = app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV}`);
+});
+
+// Socket.IO configuration
+io.listen(server, {
+    cors: {
+        origin: process.env.NODE_ENV === 'production' 
+            ? ['https://real-time-chat-pawanhiray08.koyeb.app'] 
+            : ['http://localhost:8080'],
+        methods: ['GET', 'POST'],
+        credentials: true
+    }
+});
 
 // Socket.IO middleware to access session data
 io.use((socket, next) => {
@@ -176,10 +195,6 @@ mongoose.connect(process.env.MONGODB_URI, {
 })
 .then(() => {
     console.log('MongoDB Connected successfully');
-    server.listen(port, () => {
-        console.log(`Server is running on http://localhost:${port}`);
-        console.log('Environment:', process.env.NODE_ENV);
-    });
 })
 .catch(err => {
     console.error('MongoDB Connection Error - Details:', err);
