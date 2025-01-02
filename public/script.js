@@ -2,7 +2,10 @@
 const socket = io({
     path: '/socket.io',
     withCredentials: true,
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'],
+    auth: {
+        serverUrl: window.location.origin
+    }
 });
 
 // DOM elements

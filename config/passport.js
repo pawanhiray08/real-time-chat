@@ -1,11 +1,13 @@
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 
-module.exports = function(passport, callbackURL) {
+module.exports = (passport) => {
     passport.use(new GoogleStrategy({
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: callbackURL
+        callbackURL: process.env.NODE_ENV === 'production'
+            ? 'https://truerealchat.vercel.app/auth/google/callback'
+            : 'http://localhost:8080/auth/google/callback'
     },
     async (accessToken, refreshToken, profile, done) => {
         try {
@@ -20,10 +22,10 @@ module.exports = function(passport, callbackURL) {
                 });
             }
 
-            done(null, user);
+            return done(null, user);
         } catch (err) {
-            console.error(err);
-            done(err);
+            console.error('Passport Error:', err);
+            return done(err, null);
         }
     }));
 
@@ -36,7 +38,7 @@ module.exports = function(passport, callbackURL) {
             const user = await User.findById(id);
             done(null, user);
         } catch (err) {
-            done(err);
+            done(err, null);
         }
     });
 };

@@ -23,6 +23,7 @@ const sessionMiddleware = session({
     cookie: {
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : 'localhost',
         maxAge: 1000 * 60 * 60 * 24 // 24 hours
     }
 });
@@ -33,6 +34,17 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(sessionMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
+
+// CORS configuration for production
+if (process.env.NODE_ENV === 'production') {
+    app.use((req, res, next) => {
+        res.header('Access-Control-Allow-Origin', 'https://truerealchat.vercel.app');
+        res.header('Access-Control-Allow-Credentials', true);
+        res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        next();
+    });
+}
 
 // Passport config
 require('./config/passport');
