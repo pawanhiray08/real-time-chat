@@ -2,12 +2,24 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 
 module.exports = (passport) => {
+    // Get the callback URL based on the environment
+    const getCallbackURL = () => {
+        if (process.env.NODE_ENV === 'production') {
+            // For preview deployments
+            if (process.env.VERCEL_URL) {
+                return `https://${process.env.VERCEL_URL}/auth/google/callback`;
+            }
+            // For the main domain
+            return 'https://truerealchat.vercel.app/auth/google/callback';
+        }
+        // For local development
+        return 'http://localhost:8080/auth/google/callback';
+    };
+
     passport.use(new GoogleStrategy({
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: process.env.NODE_ENV === 'production'
-            ? `${process.env.VERCEL_URL || 'https://truerealchat.vercel.app'}/auth/google/callback`
-            : 'http://localhost:8080/auth/google/callback',
+        callbackURL: getCallbackURL(),
         proxy: true
     },
     async (accessToken, refreshToken, profile, done) => {
